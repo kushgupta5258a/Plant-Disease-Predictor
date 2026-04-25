@@ -164,7 +164,7 @@ st.title("🌱 Plant Disease Predictor & Treatment Guide")
 st.markdown("---")
 
 # Load API Key from .env
-api_key = os.getenv("OPENROUTER_API_KEY")
+api_key = st.secrets.get("OPENROUTER_API_KEY")
 
 # Sidebar
 with st.sidebar:
