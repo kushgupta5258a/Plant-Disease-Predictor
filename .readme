@@ -1,0 +1,15 @@
+plant-disease-ai/
+│
+├── data/
+│   └── dataset/              # your Kaggle dataset here
+│
+├── model/
+│   ├── train.py              # preprocessing + training + fine-tuning
+│   ├── predict.py            # load model + inference
+│   └── model.pkl             # saved model
+│
+├── app/
+│   └── app.py                # Streamlit UI
+│
+├── requirements.txt
+└── README.md

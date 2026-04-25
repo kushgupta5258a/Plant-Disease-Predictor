@@ -1,0 +1,23 @@
+# Dataset
+data/
+
+# Environment
+venv/
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Model (optional ignore if large)
+*.pth
+*.pt
+*.h5
+*.joblib
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
