@@ -25,6 +25,7 @@ st.set_page_config(
 # CONFIG
 # -----------------------
 MODEL_PATH = "model/model.pkl"
+LEAF_DETECTOR_PATH = "model/leaf_detector.pkl"
 DATA_DIR = "data/dataset/PlantVillage"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -67,7 +68,25 @@ def load_model():
     model.eval()
     return model
 
+@st.cache_resource
+def load_leaf_detector():
+    """Load the leaf detection model (binary classifier: leaf vs non_leaf)"""
+    leaf_model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+    leaf_model.classifier[1] = nn.Linear(leaf_model.classifier[1].in_features, 2)  # Binary classification
+    leaf_model.load_state_dict(torch.load(LEAF_DETECTOR_PATH, map_location=DEVICE))
+    leaf_model = leaf_model.to(DEVICE)
+    leaf_model.eval()
+    return leaf_model
+
 model = load_model()
+
+try:
+    leaf_detector_model = load_leaf_detector()
+    leaf_detector_available = True
+except FileNotFoundError:
+    leaf_detector_model = None
+    leaf_detector_available = False
+    st.warning("⚠️ Leaf detector model not found. Please train it first using: python model/train_leaf_detector.py")
 
 # -----------------------
 # TRANSFORM
@@ -78,6 +97,27 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406],
                          [0.229, 0.224, 0.225])
 ])
+
+# -----------------------
+# LEAF DETECTION FUNCTION
+# -----------------------
+def is_leaf_image(image):
+    """Check if the uploaded image is a leaf or not"""
+    try:
+        image_rgb = image.convert('RGB')
+        image_tensor = transform(image_rgb).unsqueeze(0).to(DEVICE)
+
+        with torch.no_grad():
+            outputs = leaf_detector_model(image_tensor)
+            probabilities = torch.softmax(outputs, 1)
+            confidence, predicted = torch.max(probabilities, 1)
+
+        is_leaf = predicted.item() == 0
+        leaf_confidence = probabilities[0, 0].item()
+        return is_leaf, leaf_confidence
+    except Exception as e:
+        st.error(f"Error during leaf detection: {e}")
+        return None, None
 
 # -----------------------
 # PREDICTION FUNCTION
@@ -212,21 +252,49 @@ with col2:
     if uploaded_file:
         st.subheader("🔍 Step 2: Prediction Results")
         
-        with st.spinner("🤖 Analyzing image..."):
-            predicted_disease, confidence, top_predictions = predict(image)
-        
-        if predicted_disease:
-            # Display main prediction
-            st.success(f"**Predicted Disease**: {predicted_disease}")
-            st.metric("Confidence", f"{confidence*100:.2f}%")
+        # First check if image is a leaf
+        if leaf_detector_available:
+            with st.spinner("🌿 Checking if image is a leaf..."):
+                is_leaf, leaf_confidence = is_leaf_image(image)
             
-            # Display top predictions
-            st.markdown("**Top 5 Predictions:**")
-            for i, (disease, prob) in enumerate(top_predictions, 1):
-                st.write(f"{i}. {disease} - {prob*100:.2f}%")
+            if is_leaf is None:
+                st.error("❌ Error during leaf detection. Please try again.")
+            elif not is_leaf:
+                st.error(f"❌ This is NOT a leaf image! Leaf confidence: {leaf_confidence*100:.2f}%")
+                st.info("📝 Please upload a clear image of a plant leaf for accurate disease prediction.")
+            else:
+                # It's a leaf, now predict disease
+                with st.spinner("🤖 Analyzing disease..."):
+                    predicted_disease, confidence, top_predictions = predict(image)
+                
+                if predicted_disease:
+                    st.success(f"✅ Leaf detected! ({leaf_confidence*100:.2f}% confidence)")
+                    st.markdown("---")
+                    # Display main prediction
+                    st.success(f"**Predicted Disease**: {predicted_disease}")
+                    st.metric("Confidence", f"{confidence*100:.2f}%")
+                    
+                    # Display top predictions
+                    st.markdown("**Top 5 Predictions:**")
+                    for i, (disease, prob) in enumerate(top_predictions, 1):
+                        st.write(f"{i}. {disease} - {prob*100:.2f}%")
+        else:
+            st.warning("⚠️ Leaf detector model not available. Skipping leaf validation.")
+            with st.spinner("🤖 Analyzing image..."):
+                predicted_disease, confidence, top_predictions = predict(image)
+            
+            if predicted_disease:
+                # Display main prediction
+                st.success(f"**Predicted Disease**: {predicted_disease}")
+                st.metric("Confidence", f"{confidence*100:.2f}%")
+                
+                # Display top predictions
+                st.markdown("**Top 5 Predictions:**")
+                for i, (disease, prob) in enumerate(top_predictions, 1):
+                    st.write(f"{i}. {disease} - {prob*100:.2f}%")
 
 # Treatment Section
-if uploaded_file and predicted_disease:
+if uploaded_file and 'predicted_disease' in locals() and predicted_disease:
     st.markdown("---")
     st.subheader("💊 Step 3: Treatment & Prevention Guide")
     

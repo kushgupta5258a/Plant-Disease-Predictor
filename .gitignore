@@ -3,6 +3,7 @@ data/
 
 # Environment
 venv/
+activate/
 .env
 
 # Python cache
